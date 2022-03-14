@@ -1,0 +1,228 @@
+---
+title: "ACT/SAT/Remediation"
+author: "Jay Kim"
+date: "3/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Impact on APR by Remediation
+
+### Application data - SAT and ACT Scores
+
+```{r eval=FALSE, include=FALSE}
+library(readr) # this data does not containes all test scores
+app_2017_to_2022_cal_tier_allV0 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Jay's Space/2021 Active Projects/08/ACCEPTANCE RATE/app_2017_to_2022_cal_tier_allV0.csv") %>% 
+    mutate(is.NA_HSGPA= ifelse(is.na(BEST_HSGPA), "Yes", "No"))
+addmargins(table(app_2017_to_2022_cal_tier_allV0$APP_TERM, app_2017_to_2022_cal_tier_allV0$is.NA_HSGPA))
+
+# updated app data from acceptance rate folder
+library(readr)
+
+app_20172021V1_test <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Jay's Space/2021 Active Projects/08/ACCEPTANCE RATE/app_20172021V1_test.csv") 
+remevari <- colnames(app_20172021V1_test[,c(31:36)]) # stop here
+app_all_test <- app_20172021V1_test %>% filter(Cohort != 2021) %>% filter(GPA_HIGHSCHOOL >= 3.50) %>% 
+    select(UNIV_ROW_ID,Cohort,APR, GPA_HIGHSCHOOL, remevari) %>% filter(!is.na(ACT_RE_20) | !is.na(SAT15_RE_SUB)) %>% 
+    mutate(ACT_EN_T = ifelse(ACT_EN_20 <= 17, 1,0),
+           ACT_RE_T = ifelse(ACT_RE_20 <= 19, 1,0),
+           ACT_MA_T = ifelse(ACT_MA_20 <= 19, 1,0),
+           Total_ACT_T = (ACT_EN_T+ACT_RE_T+ACT_MA_T)) %>% 
+    mutate(SAT_WL_T = ifelse(SAT15_WL_SUB <= 25, 1,0),
+           SAT_RE_T = ifelse(SAT15_RE_SUB <= 24, 1,0),
+           SAT_MA_T = ifelse(SAT15_MA_SUB <= 24, 1,0),
+           Total_SAT_T = (SAT_WL_T+SAT_RE_T+SAT_MA_T)) %>% 
+    mutate(Total_SAT_T = ifelse(SAT15_WL_SUB > 99, NA, Total_SAT_T)) %>% 
+    mutate(Max_tag = pmax(Total_ACT_T,Total_SAT_T , na.rm = T)) %>%  # if both test have tags then choose minimum
+    filter(Total_ACT_T > 0 | Total_SAT_T > 0) %>% 
+    mutate(Reme.AL1 = ifelse(Max_tag >=1, "Yes","No" ))
+
+addmargins(table(app_all_test$APR, app_all_test$Cohort))
+#getting historical data 2017 to 2020
+mydata.state.county.reme <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Jay's Space/_HIGH_PRIORITY_PROJECTS/APR/APR FTIC2021 Dropout APR 1st Math/mydata.state.county.csv") 
+
+mydata.state.county.reme.re <- mydata.state.county.reme %>% select("UNIV_ROW_ID"=Stu_UWFID, Stu_College,Stu_Gender,"Transfer_Hours"=Stu_TotalUniversityHours,StateCode,County_Group, "EthnicitiyCode"=EthnicityCdoe ,CIP_APR,AVE_HS_APR)
+app_all_test.vari.all <- merge(app_all_test, mydata.state.county.reme.re, by="UNIV_ROW_ID", all.x = T)
+colSums(is.na(app_all_test.vari.all))
+act.all.added <- app_all_test.vari.all %>% filter(!is.na(APR))
+hist(app_all_test$ACT_MA_20)
+glimpse(app_all_test)
+write.csv(app_all_test, "app_all_test.csv", row.names = F)
+write.csv(act.all.added, "act.all.added.csv",row.names = F)
+ 
+```
+
+### Data - at least one remedication and HS GPA 3.50+
+
+```{r}
+library(readr)
+act.all.added <- read_csv("act.all.added.csv")
+addmargins(table(APR=act.all.added$APR, Cohort=act.all.added$Cohort))
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+### Var test
+act.all <- app_all_test %>% filter(!is.na(GPA_HIGHSCHOOL))
+tapply(act.all$GPA_HIGHSCHOOL, act.all$APR, mean)
+var.test(act.all$GPA_HIGHSCHOOL ~ act.all$APR)
+# 2nd data
+act.all.added <- app_all_test.vari.all %>% filter(!is.na(APR))
+tapply(act.all.added$Transfer_Hours, act.all.added$APR, mean)
+var.test(act.all.added$Transfer_Hours ~ act.all.added$APR)
+```
+
+### Data Cleansing
+
+```{r shaping}
+library(readr)
+library(tidyverse)
+app_all_test <- read_csv("app_all_test.csv")
+act.all.added <- read_csv("act.all.added.csv")
+
+ 
+ctree.data <- app_all_test %>%  select(APR,GPA_HIGHSCHOOL ,5:7,11:13,Total_ACT_T ) %>% na.omit() %>% mutate_if(is.character, as.factor) %>% 
+    mutate_at(c(6,7,8,9 ), as.factor) #%>% 
+    #filter(!(abs(GPA_HIGHSCHOOL - mean(GPA_HIGHSCHOOL)) > 3*sd(GPA_HIGHSCHOOL)))
+#2nd data
+ctree.data.added <- act.all.added %>%  select(-UNIV_ROW_ID, -Cohort, -contains("SAT15")) %>%  
+    mutate_if(is.character, as.factor) %>% 
+    mutate_at(c(6:13), as.factor) %>% select(-contains("SAT")) %>% 
+    mutate(is.math.reme = ifelse((ACT_MA_T == 1 & ACT_RE_T == 0 & ACT_EN_T ==0), "Yes","No") ) %>% 
+    mutate(Num.Reme = ifelse(Total_ACT_T== "1","1", "1+")) %>% filter(!is.na(ACT_EN_20)) %>% 
+    mutate_if(is.character, as.factor)  
+
+    #filter(!(abs(GPA_HIGHSCHOOL - mean(GPA_HIGHSCHOOL)) > 3*sd(GPA_HIGHSCHOOL)))
+glimpse(ctree.data.added)
+```
+
+### Correlation Matrix
+
+```{r cor}
+library(corrgram)
+library(corrplot)
+cor.apr <- ctree.data.added[c(2,3,4,5,14,18,19)] %>% na.omit()
+cor.plot <- cor(cor.apr)
+cor.plot
+corrplot(cor.plot, method = "pie" )
+```
+
+### Optimal Values
+
+```{r ctree}
+# decision tree
+library(party)
+set.seed(123)
+plot(m1 <- ctree(APR~., data = ctree.data.added))
+plot(m2 <- ctree(APR~., data = ctree.data[, c(1:5)]))
+ 
+```
+
+### Descriptive Statistics
+
+```{r descriptive}
+glm.data <- ctree.data.added   %>%     
+    mutate(HSGPA = ifelse(GPA_HIGHSCHOOL>=3.98, "Above3.98","Below3.98")) %>% 
+    mutate(HSAPR = ifelse(AVE_HS_APR >=0.68, "Above0.68","Below0.68"))  
+
+Hmisc::describe(glm.data)
+
+```
+
+### Summary Table
+
+```{r }
+# summary 
+library(gtsummary)
+sum.reme <- glm.data %>%  mutate(APR = ifelse(APR =="Yes", 1,0))  %>% 
+    tbl_summary( by = APR,
+                statistic = all_continuous() ~ "{mean} ({sd}) {min} {max}",
+                missing = "no"
+                            ) %>% add_n()  %>% add_p()
+sum.reme
+```
+
+### Boxplot - High school GPA and test scores by APR
+
+```{r boxplot}
+library(doBy)
+summaryBy( GPA_HIGHSCHOOL ~ APR, data=glm.data)
+addmargins(table(APR=glm.data$APR, Math.REM=glm.data$is.math.reme))
+boxplot(ACT_EN_20 ~ APR, data=glm.data)
+boxplot(ACT_RE_20 ~ APR, data=glm.data)
+boxplot(ACT_MA_20 ~ APR, data=glm.data)
+boxplot(AVE_HS_APR ~ APR, data=glm.data)
+g4 <- ggplot(glm.data , aes(x=factor(is.math.reme), fill=factor(APR))) +  geom_bar() +labs(title = " APR by ACT Math Remedication")
+g5 <- ggplot(glm.data , aes(x=factor(HSAPR), fill=factor(APR))) +  geom_bar() 
+g6 <- ggplot(glm.data , aes(x=factor(Total_ACT_T), fill=factor(APR))) +  geom_bar()
+g4
+g5
+g6
+```
+
+### Logistic Regression
+
+
+```{r}
+
+summary(model1 <- glm(APR ~HSGPA+HSAPR+Num.Reme ,  family = "binomial", data = glm.data))
+# glimpse(glm.data)
+# colSums(is.na(glm.data))
+#Cohort divide by year. impact on cohort year
+```
+- The results suggest that below HS GPA 3.98 students are 0.8 times less likely to make APR than those with HS GPA above 3.98.
+- Students who came from high schools with group APR below 68%, are two times more likely to be non-APR than those from high schools with group APR above 68%.
+*low HS APR* indicates a smaller number of students coming to UWF and performing poorly in their first academic year
+- The number of remediations is not a significant factor affecting APR
+
+
+
+
+### Accuracy
+
+```{r}
+
+p_1 <- predict(model1, glm.data, type="response")
+pred_1 <- ifelse(p_1 > 0.50, 1,0)
+tab_1 <- table(Predicted=pred_1, Actural=glm.data$APR)
+tab_1
+round(sum(diag(tab_1))/sum(tab_1),4)
+```
+
+### Misclassifciation
+
+```{r}
+results <- cbind(glm.data,pred_1) %>% relocate(APR, .after = pred_1) %>% relocate(GPA_HIGHSCHOOL, .after = HSGPA) %>% 
+    mutate(misclass = ifelse((pred_1 ==1 & APR=="Yes") |(pred_1 == 0 & APR=="No"), "True","False"))
+#addmargins(table(pred=results$pre_ind, act=results$APR))
+misclassed <- results %>% filter(misclass == "False")
+DT::datatable(misclassed)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+library(readr)
+fticall2021 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Jay's Space/_HIGH_PRIORITY_PROJECTS/APR/APR FTIC2021 Dropout APR 1st Math/output_ftic2021.pre.1st.apr.drop.out.rerun.v1.csv")
+# stop here 
+# merge with results and test score set
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+library(readxl)
+X2021_FTIC_w_3_5_1_remed_UWF_2021_Fall_GPA <- read_excel("G:/Shared drives/HMCSE-PAM Lab/Jay's Space/2022 Active Projects/01/SAT_ACT_3.5_Remediation/2021 FTIC w 3.5+ 1 remed_UWF 2021 Fall GPA.xlsx")
+
+FTICtest.score <- X2021_FTIC_w_3_5_1_remed_UWF_2021_Fall_GPA %>%  select(UWFID, contains("SAT"), contains("ACT"))
+
+```
+

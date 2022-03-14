@@ -1,0 +1,17 @@
+---
+title: "HSAPR"
+author: "Jay Kim"
+date: "3/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+ 
+HS_APR20172020_V1 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Jay's Space/_HIGH_PRIORITY_PROJECTS/APR/APR FTIC2021/HS_APR20172020_V1.csv")
+```
+
